@@ -42,8 +42,8 @@ public:
 
     void setup() override {
         declareBuffer(leds, NUM_LEDS, sizeof(CRGB));
-        addControl(speed_,     "speed",      "range", 1.0f, 10.0f);
-        addControl(hueOffset_, "hue_offset", "range", 0.0f, 255.0f);
+        addControl(speed_,     "speed",      "slider", 1.0f, 10.0f);
+        addControl(hueOffset_, "hue_offset", "slider", 0.0f, 255.0f);
     }
 
     void loop() override {
@@ -82,8 +82,8 @@ public:
         // Cap at 30fps: at 90fps the RMT peripheral occupies ~70% of radio
         // time on ESP32-S3, starving WiFi beacon transmission and making the
         // AP invisible in scans. 30fps drops duty cycle to ~23%.
-        // FastLED.setMaxRefreshRate(30);
-        addControl(brightness_, "brightness", "range", 0.0f, 255.0f);
+        FastLED.setMaxRefreshRate(30);
+        addControl(brightness_, "brightness", "slider", 0.0f, 255.0f);
     }
 
     void loop() override {
@@ -97,6 +97,20 @@ public:
     void onUpdate(const char* key) override {
         if (strcmp(key, "brightness") == 0)
             FastLED.setBrightness(static_cast<uint8_t>(brightness_));
+    }
+
+    bool snapshot(std::vector<uint8_t>& buf) const override {
+        buf.resize(7 + NUM_LEDS * 3);
+        buf[0] = 0x02;
+        buf[1] = WIDTH & 0xFF;  buf[2] = WIDTH >> 8;
+        buf[3] = HEIGHT & 0xFF; buf[4] = HEIGHT >> 8;
+        buf[5] = 1;             buf[6] = 0;
+        for (uint16_t i = 0; i < NUM_LEDS; ++i) {
+            buf[7 + i*3 + 0] = leds[i].r;
+            buf[7 + i*3 + 1] = leds[i].g;
+            buf[7 + i*3 + 2] = leds[i].b;
+        }
+        return true;
     }
 
     void healthReport(char* buf, size_t len) const override {
