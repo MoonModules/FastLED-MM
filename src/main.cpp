@@ -59,6 +59,9 @@ public:
 
     void teardown() override {}
 
+    // Suppress ProducerModule::snapshot() — FastLEDDriverModule owns the preview.
+    bool snapshot(std::vector<uint8_t>&) const override { return false; }
+
     void healthReport(char* buf, size_t len) const override {
         snprintf(buf, len, "speed=%.0f hue=%.0f", speed_, hueOffset_);
     }
