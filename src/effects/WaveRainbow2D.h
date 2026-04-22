@@ -19,7 +19,7 @@
 class WaveRainbow2DEffect : public ProducerModule {
 public:
     const char* name()     const override { return "WaveRainbow2D"; }
-    const char* category() const override { return "effect"; }
+    const char* category() const override { return "source"; }
     const char* tags()     const override { return "🔥🟦"; }
     uint8_t     preferredCore() const override { return 0; }
 
