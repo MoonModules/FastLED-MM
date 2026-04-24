@@ -2,7 +2,7 @@
 
 # FastLED-MM
 
-FastLED effects and drivers running inside the [projectMM](https://github.com/ewowi/projectMM) module runtime.
+FastLED effects and drivers running inside the [projectMM](https://github.com/ewowi/projectMM) module runtime on ESP32 devices.
 
 ## What this is
 
