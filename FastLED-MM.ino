@@ -10,13 +10,7 @@
 
 #include <Arduino.h>
 #include <FastLED.h>
-#include "src/core/AppSetup.h"
-#include "src/core/Scheduler.h"
-#include "src/core/ModuleManager.h"
-#include "src/core/HttpServer.h"
-#include "src/core/WsServer.h"
-#include "src/core/ProducerModule.h"
-#include "src/core/ConsumerModule.h"
+#include <src/projectMM.h>
 
 constexpr uint8_t  PIN      = 2;    // data pin to the first LED strip
 constexpr uint16_t WIDTH    = 16;   // panel width in pixels

@@ -11,28 +11,27 @@
 
 #include <Arduino.h>
 #include <FastLED.h>
-#include "core/AppSetup.h"
-#include "core/Scheduler.h"
-#include "core/ModuleManager.h"
-#include "core/HttpServer.h"
-#include "core/WsServer.h"
-#include "core/ProducerModule.h"
-#include "core/ConsumerModule.h"
-#include "modules/drivers/PreviewModule.h"
+#include <projectMM.h>
 
 constexpr uint8_t  PIN      = 2;    // data pin to the first LED strip
 constexpr uint16_t WIDTH    = 16;   // panel width in pixels
 constexpr uint16_t HEIGHT   = 16;   // panel height in pixels
 constexpr uint16_t NUM_LEDS = WIDTH * HEIGHT;
 
-// Row-major index helper: (x=column, y=row) to flat array index.
-// Matches the layout written by most 2D panel drivers (no serpentine).
+// Logical pixel array — written by effects in row-major order, read by PreviewModule.
+CRGB leds[NUM_LEDS];
+// Physical pixel array — serpentine-remapped from leds[] by the driver before FastLED.show().
+CRGB physLeds[NUM_LEDS];
+
+// Row-major index: (x=column, y=row) → flat array index, no serpentine.
 inline uint16_t idx(uint8_t x, uint8_t y) {
     return static_cast<uint16_t>(y) * WIDTH + x;
 }
 
-// Shared pixel array — written by effects, read by the driver.
-CRGB leds[NUM_LEDS];
+// Serpentine index: odd rows run right→left; delegates to idx() for the base calculation.
+inline uint16_t serpentineIdx(uint8_t x, uint8_t y) {
+    return idx(y & 1 ? (WIDTH - 1 - x) : x, y);
+}
 
 class WaveRainbow2DEffect : public ProducerModule {
 public:
@@ -40,6 +39,9 @@ public:
     const char* category() const override { return "source"; }
     const char* tags()     const override { return "🔥🟦"; }
     uint8_t     preferredCore() const override { return 0; }
+
+    uint16_t pixelWidth()  const override { return WIDTH; } // asked for by previerModule
+    uint16_t pixelHeight() const override { return HEIGHT; } // asked for by previerModule
 
     void setup() override {
         declareBuffer(leds, NUM_LEDS, sizeof(CRGB));
@@ -58,12 +60,6 @@ public:
         }
     }
 
-    void teardown() override {}
-
-    void healthReport(char* buf, size_t len) const override {
-        snprintf(buf, len, "speed=%.0f hue=%.0f", speed_, hueOffset_);
-    }
-
     size_t classSize() const override { return sizeof(*this); }
 
 private:
@@ -78,7 +74,7 @@ public:
     uint8_t     preferredCore() const override { return 1; }
 
     void setup() override {
-        FastLED.addLeds<WS2812B, PIN, GRB>(leds, NUM_LEDS);
+        FastLED.addLeds<WS2812B, PIN, GRB>(physLeds, NUM_LEDS);
         FastLED.setBrightness(static_cast<uint8_t>(brightness_));
         // Cap at 30fps: at 90fps the RMT peripheral occupies ~70% of radio
         // time on ESP32-S3, starving WiFi beacon transmission and making the
@@ -88,6 +84,11 @@ public:
     }
 
     void loop() override {
+        // Remap logical row-major leds[] to physical serpentine physLeds[] before pushing.
+        // Safe: AppSetup's semaphore ensures Core 0 has finished writing leds[] before this runs.
+        for (uint8_t y = 0; y < HEIGHT; ++y)  // cache-friendly: 1.5 KB fits in L1; even rows write sequentially, odd rows reversed but within 2 hot cache lines
+            for (uint8_t x = 0; x < WIDTH; ++x)
+                physLeds[serpentineIdx(x, y)] = leds[idx(x, y)];
         FastLED.show();
     }
 
@@ -98,10 +99,6 @@ public:
     void onUpdate(const char* key) override {
         if (strcmp(key, "brightness") == 0)
             FastLED.setBrightness(static_cast<uint8_t>(brightness_));
-    }
-
-    void healthReport(char* buf, size_t len) const override {
-        snprintf(buf, len, "brightness=%.0f fps=%u", brightness_, FastLED.getFPS());
     }
 
     size_t classSize() const override { return sizeof(*this); }
@@ -132,14 +129,10 @@ static void firstBoot(ModuleManager& mm) {
     mm.addModule("FastLEDDriverModule", "driver1",  ep, ep, 1, "");
 
     // Add PreviewModule wired to fx1 (WaveRainbow2DEffect / ProducerModule).
-    // width=16, height=16 matches the 16x16 panel geometry defined by WIDTH/HEIGHT.
-    JsonDocument pd;
-    pd["width"]  = WIDTH;
-    pd["height"] = HEIGHT;
-    JsonDocument inp;
+    JsonDocument inp;  // No width/height props needed: PreviewModule reads geometry from source via pixelBuf().
     inp["source"] = "fx1";
     mm.addModule("PreviewModule", "preview1",
-                 pd.as<JsonObjectConst>(), inp.as<JsonObjectConst>(), 1, "");
+                 ep, inp.as<JsonObjectConst>(), 1, "");
 
     mm.saveAllState();
 }
